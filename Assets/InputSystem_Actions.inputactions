@@ -51,28 +51,19 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "Attack3",
-                    "type": "Button",
-                    "id": "98256db2-e3a1-4608-8484-6f98dd15ecda",
-                    "expectedControlType": "",
-                    "processors": "",
-                    "interactions": "",
-                    "initialStateCheck": true
-                },
-                {
-                    "name": "Attack2",
-                    "type": "Button",
-                    "id": "634cbdd5-3344-4812-8329-473bc46e59af",
-                    "expectedControlType": "",
-                    "processors": "",
-                    "interactions": "",
-                    "initialStateCheck": true
-                },
-                {
-                    "name": "Attack1",
+                    "name": "LanternToggle",
                     "type": "Button",
                     "id": "bfa06cbe-f7ee-4799-bcd4-297a3f92cec8",
                     "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "LanternAim",
+                    "type": "PassThrough",
+                    "id": "e0425ae1-240a-4100-82e2-a0ee2f5ca64c",
+                    "expectedControlType": "Vector2",
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": true
@@ -312,34 +303,23 @@
                 },
                 {
                     "name": "",
-                    "id": "fcafcfac-a7e1-4185-a8bd-dfca960de50c",
-                    "path": "<Keyboard>/upArrow",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";Keyboard&Mouse",
-                    "action": "Attack3",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "4d5b9107-6515-439f-bc1b-5c783a34a29b",
-                    "path": "<Keyboard>/rightArrow",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": ";Keyboard&Mouse",
-                    "action": "Attack2",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
                     "id": "96a4ab2e-6601-4313-9c8e-d81b6aed2ce8",
-                    "path": "<Keyboard>/leftArrow",
+                    "path": "<Keyboard>/leftCtrl",
                     "interactions": "",
                     "processors": "",
                     "groups": ";Keyboard&Mouse",
-                    "action": "Attack1",
+                    "action": "LanternToggle",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "5c06f903-df03-48ed-8bf6-a150d956d2ed",
+                    "path": "<Mouse>/delta",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "LanternAim",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

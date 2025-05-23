@@ -15,10 +15,15 @@ public class InputManager : MonoBehaviour
     public static bool RunIsHeld;
     public static bool DashWasPressed;
 
+    public static bool LanternTogglePressed;
+    public static Vector2 LanternAimDirection;
+
     private InputAction _moveAction;
     private InputAction _jumpAction;
     private InputAction _runAction;
     private InputAction _dashAction;
+    private InputAction _lanternToggleAction;
+    private InputAction _lanternAimAction;
 
     private void Awake()
     {
@@ -29,6 +34,9 @@ public class InputManager : MonoBehaviour
         _jumpAction = PlayerInput.actions["Jump"];
         _runAction = PlayerInput.actions["Run"];
         _dashAction = PlayerInput.actions["Dash"];
+
+        _lanternToggleAction = PlayerInput.actions["LanternToggle"];
+        _lanternAimAction = PlayerInput.actions["LanternAim"];
     }
 
     private void Update()
@@ -41,5 +49,8 @@ public class InputManager : MonoBehaviour
 
         RunIsHeld = _runAction.IsPressed();
         DashWasPressed = _dashAction.WasPressedThisFrame();
+
+        LanternTogglePressed = _lanternToggleAction.WasPressedThisFrame();
+        LanternAimDirection = _lanternAimAction.ReadValue<Vector2>();
     }
 }
