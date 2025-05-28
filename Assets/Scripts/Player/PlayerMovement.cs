@@ -9,7 +9,6 @@ public class PlayerMovement : MonoBehaviour
     public PlayerMovementStats MoveStats;
     [SerializeField] private Collider2D _feetColl;
     [SerializeField] private Collider2D _bodyColl;
-    public Animator _animator;
 
 
     private Rigidbody2D _rb;
@@ -168,13 +167,10 @@ public class PlayerMovement : MonoBehaviour
                 if (InputManager.RunIsHeld)
                 {
                     targetVelocity = moveInput.x * MoveStats.MaxRunSpeed;
-                    _animator.SetBool("isRunning", true);
                 }
                 else 
                 {
                     targetVelocity = moveInput.x * MoveStats.MaxWalkSpeed;
-                    _animator.SetBool("isRunning", false);
-                    _animator.SetBool("isWalking", true);
                 }
 
                 HorizontalVelocity = Mathf.Lerp(HorizontalVelocity, targetVelocity, acceleration * Time.fixedDeltaTime);
@@ -182,7 +178,6 @@ public class PlayerMovement : MonoBehaviour
             else if (Mathf.Abs(moveInput.x) < MoveStats.MoveThreshold)
             {
                 HorizontalVelocity = Mathf.Lerp(HorizontalVelocity, 0f, decceleration * Time.fixedDeltaTime);
-                _animator.SetBool("isWalking", false);
             }
         }
         
