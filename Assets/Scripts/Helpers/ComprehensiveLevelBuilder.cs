@@ -115,8 +115,8 @@ public class ComprehensiveLevelBuilder : MonoBehaviour
         // Circular chamber floor
         CreatePlatform(area.transform, new Vector3(28, -8, 0), new Vector3(14, 1, 1), "Discovery Chamber Floor");
 
-        // Main lantern shrine (the one that gives player the lantern)
-        GameObject mainShrine = CreateShrine(area.transform, new Vector3(28, -6, 0), new Vector3(2, 3, 1), "Main Lantern Shrine");
+        // Collectible lantern (instead of just a shrine)
+        GameObject collectibleLantern = CreateCollectibleLantern(area.transform, new Vector3(28, -5, 0), "Main Collectible Lantern");
 
         // Add some atmospheric elements
         CreateWall(area.transform, new Vector3(28, -3, 0), new Vector3(4, 1, 1), "Shrine Canopy");
@@ -248,13 +248,82 @@ public class ComprehensiveLevelBuilder : MonoBehaviour
         canvas.AddComponent<UnityEngine.UI.CanvasScaler>();
         canvas.AddComponent<UnityEngine.UI.GraphicRaycaster>();
 
-        // Create tutorial UI
+        // Create tutorial UI GameObject
         GameObject tutorialUI = new GameObject("Tutorial_UI");
         tutorialUI.transform.SetParent(canvas.transform);
 
+        // Add RectTransform and set it to fill parent
+        RectTransform tutorialRect = tutorialUI.GetComponent<RectTransform>();
+        if (tutorialRect == null)
+            tutorialRect = tutorialUI.AddComponent<RectTransform>();
+        tutorialRect.anchorMin = Vector2.zero;
+        tutorialRect.anchorMax = Vector2.one;
+        tutorialRect.offsetMin = Vector2.zero;
+        tutorialRect.offsetMax = Vector2.zero;
+
+        // Create tutorial panel
+        GameObject tutorialPanel = new GameObject("Tutorial_Panel");
+        tutorialPanel.transform.SetParent(tutorialUI.transform);
+
+        // Setup panel RectTransform
+        RectTransform panelRect = tutorialPanel.AddComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0.1f, 0.1f);
+        panelRect.anchorMax = new Vector2(0.9f, 0.3f);
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+
+        // Add panel background
+        UnityEngine.UI.Image panelImage = tutorialPanel.AddComponent<UnityEngine.UI.Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.8f); // Semi-transparent black
+
+        // Create tutorial text
+        GameObject tutorialText = new GameObject("Tutorial_Text");
+        tutorialText.transform.SetParent(tutorialPanel.transform);
+
+        // Setup text RectTransform
+        RectTransform textRect = tutorialText.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(20, 20);
+        textRect.offsetMax = new Vector2(-20, -20);
+
+        // Add text component (try TextMeshPro first, fallback to regular Text)
+        TMPro.TextMeshProUGUI textComponent = null;
+        try
+        {
+            textComponent = tutorialText.AddComponent<TMPro.TextMeshProUGUI>();
+            textComponent.text = "Tutorial Text";
+            textComponent.fontSize = 24;
+            textComponent.color = Color.white;
+            textComponent.alignment = TMPro.TextAlignmentOptions.Center;
+        }
+        catch
+        {
+            // Fallback to regular Text if TextMeshPro isn't available
+            UnityEngine.UI.Text regularText = tutorialText.AddComponent<UnityEngine.UI.Text>();
+            regularText.text = "Tutorial Text";
+            regularText.fontSize = 24;
+            regularText.color = Color.white;
+            regularText.alignment = TextAnchor.MiddleCenter;
+            regularText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        }
+
+        // Add TutorialUI component and assign references
         TutorialUI uiComponent = tutorialUI.AddComponent<TutorialUI>();
 
-        Debug.Log("Tutorial system created! You'll need to manually configure the tutorial steps in the OpeningAreaManager component.");
+        // Use reflection to set private fields (since they're SerializeField)
+        var tutorialPanelField = typeof(TutorialUI).GetField("_tutorialPanel",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        tutorialPanelField?.SetValue(uiComponent, tutorialPanel);
+
+        var tutorialTextField = typeof(TutorialUI).GetField("_tutorialText",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        if (textComponent != null)
+            tutorialTextField?.SetValue(uiComponent, textComponent);
+        else
+            tutorialTextField?.SetValue(uiComponent, tutorialText.GetComponent<UnityEngine.UI.Text>());
+
+        Debug.Log("Tutorial system created with proper UI elements!");
     }
 
     // Helper methods for creating different types of objects
@@ -364,6 +433,36 @@ public class ComprehensiveLevelBuilder : MonoBehaviour
         platform.GetComponent<BoxCollider2D>().enabled = false;
 
         return platform;
+    }
+
+    private GameObject CreateCollectibleLantern(Transform parent, Vector3 position, string name)
+    {
+        GameObject lantern = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        lantern.name = name;
+        lantern.transform.SetParent(parent);
+        lantern.transform.position = position;
+        lantern.transform.localScale = new Vector3(1.5f, 2f, 1f);
+
+        // Remove 3D collider, add 2D trigger collider
+        DestroyImmediate(lantern.GetComponent<BoxCollider>());
+        BoxCollider2D collider2D = lantern.AddComponent<BoxCollider2D>();
+        collider2D.isTrigger = true;
+
+        // Add collectible lantern component
+        CollectibleLantern lanternComponent = lantern.AddComponent<CollectibleLantern>();
+
+        // Add audio source for pickup sound
+        AudioSource audioSource = lantern.AddComponent<AudioSource>();
+        audioSource.playOnAwake = false;
+
+        // Set color to make it glow
+        Renderer renderer = lantern.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.sharedMaterial.color = Color.yellow;
+        }
+
+        return lantern;
     }
 
     private GameObject CreateTutorialTrigger(Transform parent, Vector3 position, string stepName)

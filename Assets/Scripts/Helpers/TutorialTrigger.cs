@@ -52,3 +52,5 @@ public class TutorialTrigger : MonoBehaviour
         }
     }
 }
+
+// ================== RevealablePlatform.cs ==================

@@ -141,25 +141,24 @@ public class LanternController : MonoBehaviour
 
         if (_useMouseAiming && _playerCamera != null)
         {
-            // Mouse aiming
-            Vector3 mouseWorldPos = _playerCamera.ScreenToWorldPoint(Input.mousePosition);
+            // Mouse aiming - convert screen position to world direction
+            Vector3 mouseWorldPos = _playerCamera.ScreenToWorldPoint(new Vector3(InputManager.MousePosition.x, InputManager.MousePosition.y, _playerCamera.nearClipPlane));
             mouseWorldPos.z = 0f;
-            newDirection = (mouseWorldPos - transform.position).normalized;
+            newDirection = ((Vector2)mouseWorldPos - (Vector2)transform.position).normalized;
         }
         else
         {
-            // Controller/keyboard aiming
-            float horizontal = Input.GetAxis(_aimHorizontalAxis);
-            float vertical = Input.GetAxis(_aimVerticalAxis);
+            // Controller aiming using right stick
+            Vector2 stickInput = InputManager.RightStickInput;
 
-            if (horizontal != 0f || vertical != 0f)
+            if (stickInput.magnitude > 0.1f) // Dead zone
             {
-                newDirection = new Vector2(horizontal, vertical).normalized;
+                newDirection = stickInput.normalized;
             }
             else
             {
-                // Default to facing direction if no input
-                newDirection = transform.right; // Assuming player faces right by default
+                // If no input, keep current direction or default to right
+                newDirection = BeamDirection.magnitude > 0 ? BeamDirection : Vector2.right;
             }
         }
 

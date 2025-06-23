@@ -55,9 +55,12 @@ public class TutorialUI : MonoBehaviour
 
         // Start hidden
         _canvasGroup.alpha = 0f;
-        _tutorialPanel?.SetActive(false);
 
-        // Setup progress bar
+        // Only try to deactivate panel if it exists
+        if (_tutorialPanel != null)
+            _tutorialPanel.SetActive(false);
+
+        // Setup progress bar if it exists
         if (_progressBar != null)
         {
             _progressBar.color = _progressBarColor;
@@ -78,19 +81,23 @@ public class TutorialUI : MonoBehaviour
 
     private IEnumerator ShowTutorialTextAnimated(string text)
     {
-        // Show panel if hidden
+        // Show panel if hidden and if it exists
         if (!_isVisible)
         {
-            _tutorialPanel?.SetActive(true);
+            if (_tutorialPanel != null)
+                _tutorialPanel.SetActive(true);
             yield return StartCoroutine(FadeIn());
         }
 
-        // Clear current text
+        // Clear current text if text component exists
         if (_tutorialText != null)
             _tutorialText.text = "";
 
-        // Animate text reveal
-        yield return StartCoroutine(RevealText(text));
+        // Animate text reveal if text component exists
+        if (_tutorialText != null)
+            yield return StartCoroutine(RevealText(text));
+        else
+            Debug.Log($"Tutorial Text: {text}"); // Fallback to console if no UI
 
         // Auto-hide after delay
         _autoHideCoroutine = StartCoroutine(AutoHideAfterDelay());
@@ -127,7 +134,14 @@ public class TutorialUI : MonoBehaviour
         }
 
         _canvasGroup.alpha = 0f;
-        _tutorialPanel?.SetActive(false);
+
+        // Clear the text when hiding (if text component exists)
+        if (_tutorialText != null)
+            _tutorialText.text = "";
+
+        // Hide panel if it exists
+        if (_tutorialPanel != null)
+            _tutorialPanel.SetActive(false);
         _isVisible = false;
     }
 
@@ -135,18 +149,26 @@ public class TutorialUI : MonoBehaviour
     {
         if (_tutorialText == null) yield break;
 
+        // Process formatting ONCE before revealing
+        string processedText = ProcessTextFormatting(fullText);
+
+        // For reveal animation, we need to work with the raw text
+        string rawText = fullText; // Use original text for character counting
         int charactersRevealed = 0;
         float timeBetweenChars = 1f / _textRevealSpeed;
 
-        // Color important words (you can expand this system)
-        string processedText = ProcessTextFormatting(fullText);
-
-        while (charactersRevealed < processedText.Length)
+        while (charactersRevealed < rawText.Length)
         {
             yield return new WaitForSeconds(timeBetweenChars);
             charactersRevealed++;
-            _tutorialText.text = processedText.Substring(0, charactersRevealed);
+
+            // Apply formatting to the substring
+            string currentSubstring = rawText.Substring(0, charactersRevealed);
+            _tutorialText.text = ProcessTextFormatting(currentSubstring);
         }
+
+        // Ensure final text is fully formatted
+        _tutorialText.text = processedText;
     }
 
     private string ProcessTextFormatting(string text)
