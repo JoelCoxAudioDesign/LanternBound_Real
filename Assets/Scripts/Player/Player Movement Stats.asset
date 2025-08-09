@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Player Movement Stats
   m_EditorClassIdentifier: 
   MoveThreshold: 0.01
-  MaxWalkSpeed: 11.3
+  MaxWalkSpeed: 4
   GroundAcceleration: 5
   GroundDecceleration: 20
   AirAcceleration: 5
@@ -29,7 +29,7 @@ MonoBehaviour:
   HeadWidth: 0.75
   WallDetectionRayLength: 0.125
   WallDetectionRayHeightMultiplier: 0.9
-  JumpHeight: 6.5
+  JumpHeight: 5
   JumpHeightCompensationFactor: 1.05
   TimeTillJumpApex: 0.35
   GravityOnReleaseMultiplier: 2

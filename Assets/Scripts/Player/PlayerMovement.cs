@@ -9,7 +9,7 @@ public class PlayerMovement : MonoBehaviour
     public PlayerMovementStats MoveStats;
     [SerializeField] private Collider2D _feetColl;
     [SerializeField] private Collider2D _bodyColl;
-
+    private Animator _animator;
 
     private Rigidbody2D _rb;
 
@@ -22,9 +22,9 @@ public class PlayerMovement : MonoBehaviour
     private RaycastHit2D _headHit;
     private RaycastHit2D _wallHit;
     private RaycastHit2D _lastWallHit;
-    private bool _isGrounded;
-    private bool _bumpedHead;
-    private bool _isTouchingWall;
+    public bool _isGrounded;
+    public bool _bumpedHead;
+    public bool _isTouchingWall;
 
     //jump vars
     public float VerticalVelocity { get; private set; }
@@ -79,9 +79,11 @@ public class PlayerMovement : MonoBehaviour
 
     private void Awake()
     {
-        _isFacingRight = true;
+        _isFacingRight = false;
 
         _rb = GetComponent<Rigidbody2D>();
+
+        _animator = GetComponent<Animator>();
     }
 
     private void Update()
@@ -155,6 +157,15 @@ public class PlayerMovement : MonoBehaviour
 
     #region Movement
 
+    private void CacheAnimator()
+    {
+        _animator = GetComponent<Animator>();
+        if (_animator == null)
+        {
+            Debug.LogWarning("No Animator component found on player.");
+        }
+    }
+
     private void Move(float acceleration, float decceleration, Vector2 moveInput)
     {
         if (!_isDashing)
@@ -179,17 +190,18 @@ public class PlayerMovement : MonoBehaviour
             {
                 HorizontalVelocity = Mathf.Lerp(HorizontalVelocity, 0f, decceleration * Time.fixedDeltaTime);
             }
+
         }
         
     }
 
     private void TurnCheck(Vector2 moveInput)
     {
-        if (_isFacingRight && moveInput.x < 0)
+        if (_isFacingRight && moveInput.x > 0)
         {
             Turn(false);
         }
-        else if (!_isFacingRight && moveInput.x > 0)
+        else if (!_isFacingRight && moveInput.x < 0)
         {
             Turn(true);
         }
@@ -197,10 +209,11 @@ public class PlayerMovement : MonoBehaviour
 
     private void Turn(bool turnRight)
     {
+        
         if (turnRight)
         {
             _isFacingRight = true;
-            transform.Rotate(0f, 180f, 0f);
+           transform.Rotate(0f, 180f, 0f);
         }
         else
         {
@@ -209,9 +222,34 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
+    private void UpdateAnimatorFacingDirection(bool facingRight)
+    {
+        if (_animator == null) return;
+
+        // Set boolean parameter for facing direction
+        try
+        {
+            _animator.SetBool("FacingRight", facingRight);
+        }
+        catch
+        {
+            // Parameter doesn't exist, ignore
+        }
+
+        // Set float parameter for facing direction (-1.0 = left, 1.0 = right)
+        try
+        {
+            _animator.SetFloat("FacingDirection", facingRight ? 1f : -1f);
+        }
+        catch
+        {
+            // Parameter doesn't exist, ignore
+        }
+    }
+
     #endregion
 
-    #region Land/Fall
+        #region Land/Fall
     private void LandCheck()
     {
         //LANDED
