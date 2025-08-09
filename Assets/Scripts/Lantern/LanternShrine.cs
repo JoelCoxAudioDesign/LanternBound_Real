@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class LanternShrine : MonoBehaviour, ILightInteractable
+public class LanternShrine : MonoBehaviour
 {
     [Header("Shrine Settings")]
     [SerializeField] private float _activationTime = 2f;

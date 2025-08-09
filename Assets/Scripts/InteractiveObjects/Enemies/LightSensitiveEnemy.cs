@@ -6,7 +6,7 @@ using System.Collections;
 /// Perfect for your "enemy repulsion" mechanic
 /// </summary>
 [RequireComponent(typeof(Rigidbody2D))]
-public class LightSensitiveEnemy : MonoBehaviour, ILightInteractable
+public class LightSensitiveEnemy : MonoBehaviour
 {
     [Header("Light Reaction")]
     [SerializeField] private LightReactionType _reactionType = LightReactionType.Retreat;

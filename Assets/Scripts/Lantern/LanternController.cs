@@ -1,222 +1,422 @@
-using System.Collections;
+﻿using UnityEngine;
 using System.Collections.Generic;
-using UnityEngine;
+using System.Collections;
 
+/// <summary>
+/// Fixed Lantern Controller with proper access levels and naming
+/// Treats light types as "weapons" and tracks inner light progression
+/// </summary>
 public class LanternController : MonoBehaviour
 {
-    [Header("Lantern Settings")]
-    [SerializeField] private float _beamRange = 10f;
-    [SerializeField] private float _beamWidth = 30f; // Angle in degrees
+    [Header("Light Type System")]
+    [SerializeField] private LightType _currentLightType = LightType.None;
+    [SerializeField] private List<LightType> _discoveredLightTypes = new List<LightType>();
+    [SerializeField] private LightTypeData[] _lightTypeConfigurations;
+
+    [Header("Inner Light Progression")]
+    [SerializeField] private float _innerLightStrength = 0.1f; // Starts weak
+    [SerializeField] private float _maxInnerLightStrength = 1.0f;
+    [SerializeField] private UnityEngine.Light _characterAmbientLight; // Character's inner glow
+    [SerializeField] private float _ambientLightBaseIntensity = 0.2f;
+
+    [Header("Mana System")]
+    [SerializeField] private float _currentMana = 100f;
+    [SerializeField] private float _maxMana = 100f;
+    [SerializeField] private float _manaRegenRate = 10f; // Per second
+    [SerializeField] private bool _allowManaRegen = true;
+
+    [Header("Lantern Beam")]
+    [SerializeField] private Transform _lanternBeamOrigin;
+    [SerializeField] private LineRenderer _beamRenderer;
+    [SerializeField] private UnityEngine.Light _spotLight;
     [SerializeField] private LayerMask _lightInteractionLayers = -1;
-    [SerializeField] private int _raycastResolution = 20; // Number of rays for beam detection
 
-    [Header("Input Settings")]
+    [Header("Input")]
+    [SerializeField] private KeyCode _toggleLanternKey = KeyCode.F;
+    [SerializeField] private KeyCode _cycleLightTypeKey = KeyCode.Tab;
     [SerializeField] private bool _useMouseAiming = true;
-    [SerializeField] private string _aimHorizontalAxis = "RightStickX";
-    [SerializeField] private string _aimVerticalAxis = "RightStickY";
 
-    [Header("Visual Settings")]
-    [SerializeField] private LineRenderer _beamVisual;
-    [SerializeField] private Light _lightSource;
-    [SerializeField] private Color _beamColor = Color.yellow;
-    [SerializeField] private float _beamIntensity = 1f;
+    [Header("Audio & Effects")]
+    [SerializeField] private AudioSource _audioSource;
+    [SerializeField] private ParticleSystem _lightEmissionEffect;
 
-    [Header("Debug")]
-    [SerializeField] private bool _showDebugRays = false;
-
-    // Properties
+    // Public Properties - Fixed access levels
     public bool IsLanternActive { get; private set; }
-    public Vector2 BeamDirection { get; private set; }
-    public List<ILightInteractable> CurrentlyIlluminated { get; private set; }
+    public bool HasLantern { get; private set; }
+    public LightType CurrentLightType => _currentLightType; // Public getter
+    public float ManaPercentage => _maxMana > 0 ? _currentMana / _maxMana : 0f;
+    public float InnerLightPercentage => _maxInnerLightStrength > 0 ? _innerLightStrength / _maxInnerLightStrength : 0f;
 
     // Events
+    public System.Action<LightType> OnLightTypeChanged;
+    public System.Action<float> OnManaChanged;
+    public System.Action<float> OnInnerLightChanged;
     public System.Action<ILightInteractable> OnObjectIlluminated;
     public System.Action<ILightInteractable> OnObjectLeftLight;
-    public System.Action<Vector2> OnBeamDirectionChanged;
+    public System.Action OnLanternAcquired;
 
-    // Private variables
-    private Camera _playerCamera;
-    private List<ILightInteractable> _previouslyIlluminated;
-    private Vector2 _lastBeamDirection;
+    // Current light interactables
+    private List<ILightInteractable> _currentlyIlluminated = new List<ILightInteractable>();
+    private List<ILightInteractable> _previouslyIlluminated = new List<ILightInteractable>();
+
+    // Light type configurations
+    [System.Serializable]
+    public class LightTypeData
+    {
+        public LightType lightType;
+        public string displayName;
+        [TextArea(2, 3)]
+        public string description;
+
+        [Header("Beam Properties")]
+        public float beamRange = 10f;
+        public float beamWidth = 30f; // Degrees
+        public Color lightColor = Color.white;
+        public float intensity = 1f;
+
+        [Header("Mana Cost")]
+        public float activationCost = 5f; // Cost to turn on
+        public float sustainCost = 2f; // Cost per second while active
+        public bool requiresContinuousMana = true;
+
+        [Header("Special Properties")]
+        public bool canRevealHidden = true;
+        public bool canRepelEnemies = true;
+        public bool canActivateShrines = true;
+        public bool hasPiercing = false; // Can go through certain materials
+        public float damage = 0f; // For combat light types
+
+        [Header("Audio")]
+        public AudioClip activationSound;
+        public AudioClip sustainSound;
+        public AudioClip deactivationSound;
+    }
+
+    public enum LightType
+    {
+        None,           // No lantern
+        Ember,          // First light - weak, basic
+        Radiance,       // Standard bright light
+        SolarFlare,     // Intense, damages enemies
+        MoonBeam,       // Reveals hidden secrets
+        Starlight,      // Pierces through darkness barriers
+        PrismaticLight, // Multi-colored, affects different elements
+        VoidLight       // Advanced - reveals AND damages
+    }
 
     private void Awake()
     {
-        CurrentlyIlluminated = new List<ILightInteractable>();
-        _previouslyIlluminated = new List<ILightInteractable>();
+        // Setup initial state
+        IsLanternActive = false;
+        HasLantern = false;
 
-        _playerCamera = Camera.main;
-        if (_playerCamera == null)
-            _playerCamera = FindFirstObjectByType<Camera>();
+        // Setup audio
+        if (_audioSource == null)
+            _audioSource = GetComponent<AudioSource>();
 
-        SetupVisuals();
-    }
+        // Setup beam components
+        SetupBeamVisuals();
 
-    private void Start()
-    {
-        // Start with lantern active
-        ActivateLantern();
+        // Update inner light
+        UpdateInnerLightGlow();
     }
 
     private void Update()
     {
-        if (IsLanternActive)
-        {
-            UpdateBeamDirection();
-            PerformLightDetection();
-            UpdateVisuals();
-        }
+        HandleInput();
+        UpdateManaSystem();
+        UpdateLanternBeam();
+        UpdateInnerLightGlow();
     }
 
-    private void SetupVisuals()
+    private void HandleInput()
     {
-        // Setup LineRenderer if not assigned
-        if (_beamVisual == null)
+        if (!HasLantern) return;
+
+        // Toggle lantern on/off
+        if (Input.GetKeyDown(_toggleLanternKey))
         {
-            _beamVisual = GetComponent<LineRenderer>();
-            if (_beamVisual == null)
-            {
-                GameObject beamObject = new GameObject("BeamVisual");
-                beamObject.transform.SetParent(transform);
-                _beamVisual = beamObject.AddComponent<LineRenderer>();
-            }
+            if (IsLanternActive)
+                DeactivateLantern();
+            else
+                ActivateLantern();
         }
 
-        if (_beamVisual != null)
+        // Cycle through discovered light types
+        if (Input.GetKeyDown(_cycleLightTypeKey) && _discoveredLightTypes.Count > 1)
         {
-            _beamVisual.material = new Material(Shader.Find("Sprites/Default"));
-            _beamVisual.material.color = _beamColor;
-            _beamVisual.startWidth = 0.1f;
-            _beamVisual.endWidth = 0.5f;
-            _beamVisual.positionCount = 2;
-        }
-
-        // Setup Light component if not assigned
-        if (_lightSource == null)
-        {
-            _lightSource = GetComponent<Light>();
-            if (_lightSource == null)
-            {
-                _lightSource = gameObject.AddComponent<Light>();
-            }
-        }
-
-        if (_lightSource != null)
-        {
-            _lightSource.type = LightType.Spot;
-            _lightSource.color = _beamColor;
-            _lightSource.intensity = _beamIntensity;
-            _lightSource.range = _beamRange;
-            _lightSource.spotAngle = _beamWidth;
+            CycleLightType();
         }
     }
+
+    #region Lantern Acquisition and Light Type Discovery
+
+    /// <summary>
+    /// Call this when the player first finds the lantern
+    /// </summary>
+    public void AcquireLantern()
+    {
+        if (HasLantern) return;
+
+        HasLantern = true;
+
+        // Start with basic Ember light
+        DiscoverLightType(LightType.Ember);
+
+        // Increase inner light strength
+        IncreaseInnerLight(0.2f);
+
+        OnLanternAcquired?.Invoke();
+
+        Debug.Log("✨ Lantern acquired! Your inner light begins to grow...");
+    }
+
+    /// <summary>
+    /// Call this when player discovers a new light type
+    /// </summary>
+    /// <param name="newLightType">The light type to discover</param>
+    public void DiscoverLightType(LightType newLightType)
+    {
+        if (_discoveredLightTypes.Contains(newLightType)) return;
+
+        _discoveredLightTypes.Add(newLightType);
+
+        // Automatically switch to new light type
+        SwitchToLightType(newLightType);
+
+        // Increase inner light strength with each discovery
+        IncreaseInnerLight(0.1f);
+
+        // Play discovery effect
+        PlayLightDiscoveryEffect(newLightType);
+
+        Debug.Log($"🌟 New light discovered: {GetLightTypeData(newLightType)?.displayName}!");
+    }
+
+    private void IncreaseInnerLight(float amount)
+    {
+        _innerLightStrength = Mathf.Min(_innerLightStrength + amount, _maxInnerLightStrength);
+        OnInnerLightChanged?.Invoke(InnerLightPercentage);
+
+        // Also increase max mana slightly
+        _maxMana += 10f;
+        _currentMana = _maxMana; // Restore to full
+    }
+
+    #endregion
+
+    #region Light Type Management
+
+    public void SwitchToLightType(LightType lightType)
+    {
+        if (!_discoveredLightTypes.Contains(lightType)) return;
+
+        _currentLightType = lightType;
+        OnLightTypeChanged?.Invoke(lightType);
+
+        // Update beam properties
+        UpdateBeamProperties();
+
+        var lightData = GetLightTypeData(lightType);
+        Debug.Log($"Switched to {lightData?.displayName ?? lightType.ToString()}");
+    }
+
+    private void CycleLightType()
+    {
+        if (_discoveredLightTypes.Count <= 1) return;
+
+        int currentIndex = _discoveredLightTypes.IndexOf(_currentLightType);
+        int nextIndex = (currentIndex + 1) % _discoveredLightTypes.Count;
+
+        SwitchToLightType(_discoveredLightTypes[nextIndex]);
+    }
+
+    private LightTypeData GetLightTypeData(LightType lightType)
+    {
+        foreach (var data in _lightTypeConfigurations)
+        {
+            if (data.lightType == lightType)
+                return data;
+        }
+        return null;
+    }
+
+    #endregion
+
+    #region Lantern Activation/Deactivation
 
     public void ActivateLantern()
     {
+        if (!HasLantern || IsLanternActive || _currentLightType == LightType.None) return;
+
+        var lightData = GetLightTypeData(_currentLightType);
+        if (lightData == null) return;
+
+        // Check mana cost
+        if (_currentMana < lightData.activationCost)
+        {
+            Debug.Log("Not enough mana to activate lantern!");
+            return;
+        }
+
+        // Consume activation mana
+        ConsumeMana(lightData.activationCost);
+
         IsLanternActive = true;
-        if (_beamVisual != null) _beamVisual.enabled = true;
-        if (_lightSource != null) _lightSource.enabled = true;
+
+        // Setup beam
+        UpdateBeamProperties();
+        EnableBeamVisuals(true);
+
+        // Play effects
+        PlayLightActivationEffect(lightData);
+
+        Debug.Log($"Lantern activated: {lightData.displayName}");
     }
 
     public void DeactivateLantern()
     {
+        if (!IsLanternActive) return;
+
         IsLanternActive = false;
-        if (_beamVisual != null) _beamVisual.enabled = false;
-        if (_lightSource != null) _lightSource.enabled = false;
 
-        // Clear all illuminated objects
+        // Clear illuminated objects
         ClearIlluminatedObjects();
+
+        // Disable visuals
+        EnableBeamVisuals(false);
+
+        // Play deactivation sound
+        var lightData = GetLightTypeData(_currentLightType);
+        if (lightData?.deactivationSound != null && _audioSource != null)
+        {
+            _audioSource.PlayOneShot(lightData.deactivationSound);
+        }
+
+        Debug.Log("Lantern deactivated");
     }
 
-    public void ToggleLantern()
+    #endregion
+
+    #region Mana System
+
+    private void UpdateManaSystem()
     {
+        if (!HasLantern) return;
+
+        // Consume mana if lantern is active
         if (IsLanternActive)
-            DeactivateLantern();
-        else
-            ActivateLantern();
-    }
-
-    private void UpdateBeamDirection()
-    {
-        Vector2 newDirection;
-
-        if (_useMouseAiming && _playerCamera != null)
         {
-            // Mouse aiming - convert screen position to world direction
-            Vector3 mouseWorldPos = _playerCamera.ScreenToWorldPoint(new Vector3(InputManager.MousePosition.x, InputManager.MousePosition.y, _playerCamera.nearClipPlane));
-            mouseWorldPos.z = 0f;
-            newDirection = ((Vector2)mouseWorldPos - (Vector2)transform.position).normalized;
-        }
-        else
-        {
-            // Controller aiming using right stick
-            Vector2 stickInput = InputManager.RightStickInput;
-
-            if (stickInput.magnitude > 0.1f) // Dead zone
+            var lightData = GetLightTypeData(_currentLightType);
+            if (lightData != null && lightData.requiresContinuousMana)
             {
-                newDirection = stickInput.normalized;
-            }
-            else
-            {
-                // If no input, keep current direction or default to right
-                newDirection = BeamDirection.magnitude > 0 ? BeamDirection : Vector2.right;
-            }
-        }
+                float manaCost = lightData.sustainCost * Time.deltaTime;
 
-        // Only update if direction changed significantly
-        if (Vector2.Distance(newDirection, _lastBeamDirection) > 0.01f)
-        {
-            BeamDirection = newDirection;
-            _lastBeamDirection = newDirection;
-            OnBeamDirectionChanged?.Invoke(BeamDirection);
-        }
-    }
-
-    private void PerformLightDetection()
-    {
-        // Clear previous frame's illuminated objects
-        _previouslyIlluminated.Clear();
-        _previouslyIlluminated.AddRange(CurrentlyIlluminated);
-        CurrentlyIlluminated.Clear();
-
-        // Calculate beam cone
-        float halfAngle = _beamWidth * 0.5f;
-        Vector2 startPosition = transform.position;
-
-        // Cast multiple rays within the beam cone
-        for (int i = 0; i < _raycastResolution; i++)
-        {
-            float t = (float)i / (_raycastResolution - 1);
-            float currentAngle = Mathf.Lerp(-halfAngle, halfAngle, t);
-
-            // Rotate beam direction by current angle
-            Vector2 rayDirection = RotateVector2(BeamDirection, currentAngle);
-
-            // Perform raycast
-            RaycastHit2D hit = Physics2D.Raycast(startPosition, rayDirection, _beamRange, _lightInteractionLayers);
-
-            if (_showDebugRays)
-            {
-                Debug.DrawRay(startPosition, rayDirection * _beamRange, hit.collider != null ? Color.green : Color.red);
-            }
-
-            if (hit.collider != null)
-            {
-                ILightInteractable lightInteractable = hit.collider.GetComponent<ILightInteractable>();
-                if (lightInteractable != null && !CurrentlyIlluminated.Contains(lightInteractable))
+                if (_currentMana >= manaCost)
                 {
-                    CurrentlyIlluminated.Add(lightInteractable);
+                    ConsumeMana(manaCost);
+                }
+                else
+                {
+                    // Out of mana - deactivate lantern
+                    DeactivateLantern();
+                    Debug.Log("Lantern deactivated - out of mana!");
                 }
             }
         }
 
-        // Handle illumination events
+        // Regenerate mana
+        if (_allowManaRegen && _currentMana < _maxMana)
+        {
+            _currentMana = Mathf.Min(_currentMana + _manaRegenRate * Time.deltaTime, _maxMana);
+            OnManaChanged?.Invoke(ManaPercentage);
+        }
+    }
+
+    private void ConsumeMana(float amount)
+    {
+        _currentMana = Mathf.Max(_currentMana - amount, 0f);
+        OnManaChanged?.Invoke(ManaPercentage);
+    }
+
+    public void RestoreMana(float amount)
+    {
+        _currentMana = Mathf.Min(_currentMana + amount, _maxMana);
+        OnManaChanged?.Invoke(ManaPercentage);
+    }
+
+    #endregion
+
+    #region Beam and Interaction System
+
+    private void UpdateLanternBeam()
+    {
+        if (!IsLanternActive) return;
+
+        // Update beam direction based on mouse/input
+        Vector2 beamDirection = GetBeamDirection();
+
+        // Perform light detection
+        PerformLightDetection(beamDirection);
+
+        // Update visual beam
+        UpdateBeamVisuals(beamDirection);
+    }
+
+    private Vector2 GetBeamDirection()
+    {
+        if (_useMouseAiming)
+        {
+            Vector3 mouseWorldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            mouseWorldPos.z = 0f;
+            return ((Vector2)mouseWorldPos - (Vector2)transform.position).normalized;
+        }
+
+        // Default to facing direction
+        return transform.right;
+    }
+
+    private void PerformLightDetection(Vector2 beamDirection)
+    {
+        var lightData = GetLightTypeData(_currentLightType);
+        if (lightData == null) return;
+
+        // Clear previous frame
+        _previouslyIlluminated.Clear();
+        _previouslyIlluminated.AddRange(_currentlyIlluminated);
+        _currentlyIlluminated.Clear();
+
+        // Cast rays within beam cone
+        float halfAngle = lightData.beamWidth * 0.5f;
+        int rayCount = Mathf.RoundToInt(lightData.beamWidth / 5f); // More rays for wider beams
+
+        for (int i = 0; i < rayCount; i++)
+        {
+            float t = rayCount > 1 ? (float)i / (rayCount - 1) : 0.5f;
+            float currentAngle = Mathf.Lerp(-halfAngle, halfAngle, t);
+
+            Vector2 rayDirection = RotateVector2(beamDirection, currentAngle);
+
+            RaycastHit2D hit = Physics2D.Raycast(transform.position, rayDirection, lightData.beamRange, _lightInteractionLayers);
+
+            if (hit.collider != null)
+            {
+                var lightInteractable = hit.collider.GetComponent<ILightInteractable>();
+                if (lightInteractable != null && !_currentlyIlluminated.Contains(lightInteractable))
+                {
+                    _currentlyIlluminated.Add(lightInteractable);
+                }
+            }
+        }
+
+        // Process illumination events
         ProcessIlluminationEvents();
     }
 
     private void ProcessIlluminationEvents()
     {
-        // Check for newly illuminated objects
-        foreach (var illuminated in CurrentlyIlluminated)
+        // Objects newly illuminated
+        foreach (var illuminated in _currentlyIlluminated)
         {
             if (!_previouslyIlluminated.Contains(illuminated))
             {
@@ -225,10 +425,10 @@ public class LanternController : MonoBehaviour
             }
         }
 
-        // Check for objects that left the light
+        // Objects that left the light
         foreach (var previously in _previouslyIlluminated)
         {
-            if (!CurrentlyIlluminated.Contains(previously))
+            if (!_currentlyIlluminated.Contains(previously))
             {
                 previously.OnLeftLight(this);
                 OnObjectLeftLight?.Invoke(previously);
@@ -236,34 +436,129 @@ public class LanternController : MonoBehaviour
         }
     }
 
-    private void UpdateVisuals()
-    {
-        if (_beamVisual != null)
-        {
-            Vector3 startPos = transform.position;
-            Vector3 endPos = startPos + (Vector3)(BeamDirection * _beamRange);
+    #endregion
 
-            _beamVisual.SetPosition(0, startPos);
-            _beamVisual.SetPosition(1, endPos);
+    #region Visuals and Effects
+
+    private void SetupBeamVisuals()
+    {
+        // Setup beam renderer if not assigned
+        if (_beamRenderer == null)
+        {
+            GameObject beamObj = new GameObject("LanternBeam");
+            beamObj.transform.SetParent(transform);
+            _beamRenderer = beamObj.AddComponent<LineRenderer>();
         }
 
-        if (_lightSource != null)
+        _beamRenderer.material = new Material(Shader.Find("Sprites/Default"));
+        _beamRenderer.startWidth = 0.1f;
+        _beamRenderer.endWidth = 1f;
+        _beamRenderer.positionCount = 2;
+
+        // Setup spotlight if not assigned - FIXED naming conflict
+        if (_spotLight == null)
         {
-            // Update light direction
-            float angle = Mathf.Atan2(BeamDirection.y, BeamDirection.x) * Mathf.Rad2Deg;
-            _lightSource.transform.rotation = Quaternion.AngleAxis(angle - 90f, Vector3.forward);
+            _spotLight = GetComponent<UnityEngine.Light>();
+            if (_spotLight == null)
+                _spotLight = gameObject.AddComponent<UnityEngine.Light>();
+        }
+
+        _spotLight.type = UnityEngine.LightType.Spot; // FIXED - Use UnityEngine.LightType
+
+        EnableBeamVisuals(false);
+    }
+
+    private void UpdateBeamProperties()
+    {
+        var lightData = GetLightTypeData(_currentLightType);
+        if (lightData == null) return;
+
+        // Update spotlight
+        if (_spotLight != null)
+        {
+            _spotLight.color = lightData.lightColor;
+            _spotLight.intensity = lightData.intensity * _innerLightStrength;
+            _spotLight.range = lightData.beamRange;
+            _spotLight.spotAngle = lightData.beamWidth;
+        }
+
+        // Update line renderer
+        if (_beamRenderer != null)
+        {
+            _beamRenderer.material.color = lightData.lightColor;
         }
     }
 
-    private void ClearIlluminatedObjects()
+    private void UpdateBeamVisuals(Vector2 direction)
     {
-        foreach (var illuminated in CurrentlyIlluminated)
+        var lightData = GetLightTypeData(_currentLightType);
+        if (lightData == null || _beamRenderer == null) return;
+
+        Vector3 startPos = transform.position;
+        Vector3 endPos = startPos + (Vector3)(direction * lightData.beamRange);
+
+        _beamRenderer.SetPosition(0, startPos);
+        _beamRenderer.SetPosition(1, endPos);
+
+        // Update spotlight direction
+        if (_spotLight != null)
         {
-            illuminated.OnLeftLight(this);
-            OnObjectLeftLight?.Invoke(illuminated);
+            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+            _spotLight.transform.rotation = Quaternion.AngleAxis(angle - 90f, Vector3.forward);
         }
-        CurrentlyIlluminated.Clear();
     }
+
+    private void EnableBeamVisuals(bool enabled)
+    {
+        if (_beamRenderer != null)
+            _beamRenderer.enabled = enabled;
+
+        if (_spotLight != null)
+            _spotLight.enabled = enabled;
+    }
+
+    private void UpdateInnerLightGlow()
+    {
+        if (_characterAmbientLight != null)
+        {
+            float targetIntensity = _ambientLightBaseIntensity + (_innerLightStrength * 0.5f);
+            _characterAmbientLight.intensity = Mathf.Lerp(_characterAmbientLight.intensity, targetIntensity, Time.deltaTime * 2f);
+
+            // Color shifts as inner light grows
+            Color targetColor = Color.Lerp(new Color(0.8f, 0.6f, 0.4f), Color.white, _innerLightStrength);
+            _characterAmbientLight.color = targetColor;
+        }
+    }
+
+    private void PlayLightActivationEffect(LightTypeData lightData)
+    {
+        if (_audioSource != null && lightData.activationSound != null)
+        {
+            _audioSource.PlayOneShot(lightData.activationSound);
+        }
+
+        if (_lightEmissionEffect != null)
+        {
+            var main = _lightEmissionEffect.main;
+            main.startColor = lightData.lightColor;
+            _lightEmissionEffect.Play();
+        }
+    }
+
+    private void PlayLightDiscoveryEffect(LightType lightType)
+    {
+        // Play special discovery effect - could be more elaborate
+        if (_lightEmissionEffect != null)
+        {
+            _lightEmissionEffect.Play();
+        }
+
+        Debug.Log($"✨ {lightType} light discovered! Your inner light grows stronger...");
+    }
+
+    #endregion
+
+    #region Utility
 
     private Vector2 RotateVector2(Vector2 vector, float angleInDegrees)
     {
@@ -277,51 +572,45 @@ public class LanternController : MonoBehaviour
         );
     }
 
-    // Public methods for external control
-    public void SetBeamRange(float range)
+    private void ClearIlluminatedObjects()
     {
-        _beamRange = range;
-        if (_lightSource != null)
-            _lightSource.range = range;
+        foreach (var illuminated in _currentlyIlluminated)
+        {
+            illuminated.OnLeftLight(this);
+            OnObjectLeftLight?.Invoke(illuminated);
+        }
+        _currentlyIlluminated.Clear();
     }
 
-    public void SetBeamWidth(float width)
+    #endregion
+
+    #region Public API
+
+    /// <summary>
+    /// Check if current light type has specific property
+    /// </summary>
+    public bool CurrentLightHasProperty(System.Func<LightTypeData, bool> propertyCheck)
     {
-        _beamWidth = width;
-        if (_lightSource != null)
-            _lightSource.spotAngle = width;
+        var lightData = GetLightTypeData(_currentLightType);
+        return lightData != null && propertyCheck(lightData);
     }
 
-    public void SetBeamColor(Color color)
+    /// <summary>
+    /// Get current light type display name
+    /// </summary>
+    public string GetCurrentLightTypeName()
     {
-        _beamColor = color;
-        if (_beamVisual != null && _beamVisual.material != null)
-            _beamVisual.material.color = color;
-        if (_lightSource != null)
-            _lightSource.color = color;
+        var lightData = GetLightTypeData(_currentLightType);
+        return lightData?.displayName ?? "Unknown";
     }
 
-    public bool IsObjectIlluminated(ILightInteractable obj)
+    /// <summary>
+    /// Check if player has discovered specific light type
+    /// </summary>
+    public bool HasDiscovered(LightType lightType)
     {
-        return CurrentlyIlluminated.Contains(obj);
+        return _discoveredLightTypes.Contains(lightType);
     }
 
-    private void OnDrawGizmosSelected()
-    {
-        if (!IsLanternActive) return;
-
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, 0.2f);
-
-        // Draw beam cone
-        float halfAngle = _beamWidth * 0.5f;
-        Vector3 startPos = transform.position;
-
-        Vector3 rightEdge = RotateVector2(BeamDirection, halfAngle) * _beamRange;
-        Vector3 leftEdge = RotateVector2(BeamDirection, -halfAngle) * _beamRange;
-
-        Gizmos.DrawLine(startPos, startPos + rightEdge);
-        Gizmos.DrawLine(startPos, startPos + leftEdge);
-        Gizmos.DrawLine(startPos + rightEdge, startPos + leftEdge);
-    }
+    #endregion
 }

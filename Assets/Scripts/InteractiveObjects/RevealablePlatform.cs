@@ -7,7 +7,7 @@ using System.Collections;
 /// </summary>
 [RequireComponent(typeof(Collider2D))]
 [RequireComponent(typeof(SpriteRenderer))]
-public class RevealablePlatform : MonoBehaviour, ILightInteractable
+public class RevealablePlatform : MonoBehaviour
 {
     [Header("Reveal Settings")]
     [SerializeField] private bool _startVisible = false;

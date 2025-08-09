@@ -2,30 +2,29 @@
 using System.Reflection;
 
 /// <summary>
-/// Bridges your PlayerMovement system with the Animator Controller
-/// Translates movement data into animation parameters
+/// Fixed PlayerAnimationController that properly integrates with PlayerMovement
+/// Handles all animation parameters without reflection issues
 /// </summary>
-public class PlayerAnimationController : MonoBehaviour
+public class FixedPlayerAnimationController : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private Animator _animator;
     [SerializeField] private PlayerMovement _playerMovement;
 
     [Header("Animation Settings")]
-    [SerializeField] private float _speedDamping = 0.1f;
-    [SerializeField] private float _runSpeedThreshold = 0.5f;
-    [SerializeField] private bool _flipSpriteWithMovement = true;
+    [SerializeField] private float _speedDamping = 5f;
+    [SerializeField] private float _walkSpeedThreshold = 0.1f;
     [SerializeField] private bool _debugAnimationValues = false;
 
     [Header("Current Animation State - Debug")]
     [SerializeField] private string _currentStateName;
     [SerializeField] private float _currentSpeed;
-    [SerializeField] private bool _isGrounded;
+    [SerializeField] private bool _isGrounded = true; // Default to true for now
     [SerializeField] private bool _isRunning;
 
-    // Cached reflection fields for accessing private PlayerMovement data
+    // Cache the grounded field for reflection
     private FieldInfo _isGroundedField;
-    private FieldInfo _isFacingRightField;
+    private bool _hasGroundedField = false;
 
     private void Awake()
     {
@@ -35,38 +34,44 @@ public class PlayerAnimationController : MonoBehaviour
 
         if (_animator == null)
         {
-            Debug.LogError("PlayerAnimationController: No Animator component found!");
+            Debug.LogError("FixedPlayerAnimationController: No Animator component found!");
             enabled = false;
             return;
         }
 
         if (_playerMovement == null)
         {
-            Debug.LogError("PlayerAnimationController: No PlayerMovement component found!");
+            Debug.LogError("FixedPlayerAnimationController: No PlayerMovement component found!");
             enabled = false;
             return;
         }
 
-        // Cache reflection fields for accessing private PlayerMovement data
-        CacheReflectionFields();
+        // Try to find the grounded field - handle if it doesn't exist
+        TryToFindGroundedField();
 
-        Debug.Log("✓ PlayerAnimationController initialized");
+        Debug.Log("✓ FixedPlayerAnimationController initialized");
     }
 
-    private void CacheReflectionFields()
+    private void TryToFindGroundedField()
     {
-        // Cache field info for better performance
-        _isGroundedField = typeof(PlayerMovement).GetField("_isGrounded",
-            BindingFlags.NonPublic | BindingFlags.Instance);
+        // Try common field names for grounded state
+        string[] possibleFieldNames = { "_isGrounded", "isGrounded", "_grounded", "grounded" };
 
-        _isFacingRightField = typeof(PlayerMovement).GetField("_isFacingRight",
-            BindingFlags.NonPublic | BindingFlags.Instance);
+        foreach (string fieldName in possibleFieldNames)
+        {
+            _isGroundedField = typeof(PlayerMovement).GetField(fieldName,
+                BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
 
-        if (_isGroundedField == null)
-            Debug.LogWarning("PlayerAnimationController: Could not find _isGrounded field in PlayerMovement");
+            if (_isGroundedField != null)
+            {
+                _hasGroundedField = true;
+                Debug.Log($"✓ Found grounded field: {fieldName}");
+                return;
+            }
+        }
 
-        if (_isFacingRightField == null)
-            Debug.LogWarning("PlayerAnimationController: Could not find _isFacingRight field in PlayerMovement");
+        Debug.LogWarning("Could not find grounded field in PlayerMovement. Will use fallback method.");
+        _hasGroundedField = false;
     }
 
     private void Update()
@@ -91,18 +96,19 @@ public class PlayerAnimationController : MonoBehaviour
         float horizontalVelocity = _playerMovement.HorizontalVelocity;
         float verticalVelocity = _playerMovement.VerticalVelocity;
         bool isGrounded = GetIsGrounded();
-        bool isFacingRight = GetIsFacingRight();
 
-        // Calculate animation speed based on actual movement
-        float animationSpeed = CalculateAnimationSpeed(horizontalVelocity, isRunning);
+        // Calculate animation speed
+        float targetSpeed = CalculateAnimationSpeed(inputMagnitude, isRunning);
+
+        // Smooth the speed transition
+        _currentSpeed = Mathf.Lerp(_currentSpeed, targetSpeed, Time.deltaTime * _speedDamping);
 
         // Store for debug display
-        _currentSpeed = animationSpeed;
         _isGrounded = isGrounded;
-        _isRunning = isRunning && inputMagnitude > 0.1f;
+        _isRunning = isRunning && inputMagnitude > _walkSpeedThreshold;
 
-        // Update animator parameters with safe parameter setting
-        SetAnimatorFloat("Speed", animationSpeed);
+        // Update animator parameters safely
+        SetAnimatorFloat("Speed", _currentSpeed);
         SetAnimatorFloat("HorizontalInput", movement.x);
         SetAnimatorFloat("VerticalInput", movement.y);
         SetAnimatorFloat("HorizontalVelocity", horizontalVelocity);
@@ -110,8 +116,7 @@ public class PlayerAnimationController : MonoBehaviour
 
         SetAnimatorBool("IsGrounded", isGrounded);
         SetAnimatorBool("IsRunning", _isRunning);
-        SetAnimatorBool("IsMoving", inputMagnitude > 0.1f);
-        SetAnimatorBool("IsFacingRight", isFacingRight);
+        SetAnimatorBool("IsMoving", inputMagnitude > _walkSpeedThreshold);
 
         // Handle triggers
         if (jumpPressed && isGrounded)
@@ -121,79 +126,53 @@ public class PlayerAnimationController : MonoBehaviour
             SetAnimatorTrigger("DoJump");
         }
 
-        // Handle sprite flipping
-        if (_flipSpriteWithMovement)
+        // Debug output
+        if (_debugAnimationValues && (_currentSpeed > 0.1f || jumpPressed))
         {
-            HandleSpriteFlipping(movement.x);
+            Debug.Log($"Animation Update - Speed: {_currentSpeed:F2}, IsMoving: {inputMagnitude > _walkSpeedThreshold}, Input: {inputMagnitude:F2}");
         }
     }
 
-    private float CalculateAnimationSpeed(float horizontalVelocity, bool isRunning)
+    private float CalculateAnimationSpeed(float inputMagnitude, bool isRunning)
     {
-        if (_playerMovement.MoveStats == null) return 0f;
-
-        float absVelocity = Mathf.Abs(horizontalVelocity);
-
-        if (absVelocity < 0.1f)
+        if (inputMagnitude < _walkSpeedThreshold)
         {
             return 0f; // Idle
         }
 
-        // Normalize speed based on movement stats
-        float maxSpeed = isRunning ? _playerMovement.MoveStats.MaxRunSpeed : _playerMovement.MoveStats.MaxWalkSpeed;
-        float normalizedSpeed = absVelocity / maxSpeed;
-
-        // Return 1.0 for walk, 2.0 for run (you can adjust these multipliers)
-        return isRunning ? Mathf.Clamp(normalizedSpeed * 2f, 0f, 2f) : Mathf.Clamp(normalizedSpeed, 0f, 1f);
+        // Return appropriate speed based on input and running state
+        if (isRunning)
+        {
+            return 2f; // Run speed
+        }
+        else
+        {
+            return 1f; // Walk speed
+        }
     }
 
     private bool GetIsGrounded()
     {
-        if (_isGroundedField != null)
+        // Try to get grounded state from PlayerMovement
+        if (_hasGroundedField && _isGroundedField != null)
         {
             try
             {
                 return (bool)_isGroundedField.GetValue(_playerMovement);
             }
-            catch
+            catch (System.Exception e)
             {
-                Debug.LogWarning("Failed to get grounded state from PlayerMovement");
+                Debug.LogWarning($"Failed to get grounded state: {e.Message}");
+                _hasGroundedField = false; // Disable further attempts
             }
         }
 
-        // Fallback: assume grounded if vertical velocity is near zero
-        return Mathf.Abs(_playerMovement.VerticalVelocity) < 0.1f;
+        // Fallback method - check if vertical velocity is near zero and not jumping
+        float verticalVelocity = _playerMovement.VerticalVelocity;
+        return Mathf.Abs(verticalVelocity) < 2f; // Allow some tolerance for ground detection
     }
 
-    private bool GetIsFacingRight()
-    {
-        if (_isFacingRightField != null)
-        {
-            try
-            {
-                return (bool)_isFacingRightField.GetValue(_playerMovement);
-            }
-            catch
-            {
-                Debug.LogWarning("Failed to get facing direction from PlayerMovement");
-            }
-        }
-
-        // Fallback: use horizontal velocity direction
-        return _playerMovement.HorizontalVelocity >= 0f;
-    }
-
-    private void HandleSpriteFlipping(float horizontalInput)
-    {
-        if (Mathf.Abs(horizontalInput) > 0.1f)
-        {
-            Vector3 scale = transform.localScale;
-            scale.x = horizontalInput > 0 ? 1f : -1f;
-            transform.localScale = scale;
-        }
-    }
-
-    // Safe parameter setting methods with error handling
+    // Safe parameter setting methods
     private void SetAnimatorFloat(string paramName, float value)
     {
         if (_animator == null) return;
@@ -280,56 +259,39 @@ public class PlayerAnimationController : MonoBehaviour
             _currentStateName = $"State Hash: {currentState.shortNameHash}";
     }
 
-    // Debug GUI for runtime monitoring
-    private void OnGUI()
-    {
-        if (!_debugAnimationValues || _animator == null) return;
-
-        GUILayout.BeginArea(new Rect(10, 10, 250, 200));
-        GUILayout.Box("Animation Debug", GUILayout.Width(240));
-
-        GUILayout.Label($"Current State: {_currentStateName}");
-        GUILayout.Label($"Speed Parameter: {_currentSpeed:F2}");
-        GUILayout.Label($"Is Grounded: {_isGrounded}");
-        GUILayout.Label($"Is Running: {_isRunning}");
-        GUILayout.Label($"Horizontal Velocity: {_playerMovement.HorizontalVelocity:F2}");
-        GUILayout.Label($"Vertical Velocity: {_playerMovement.VerticalVelocity:F2}");
-
-        // Show input
-        Vector2 input = InputManager.Movement;
-        GUILayout.Label($"Input: ({input.x:F1}, {input.y:F1})");
-
-        GUILayout.EndArea();
-    }
-
     // Context menu methods for testing
     [ContextMenu("Test Idle Animation")]
     public void TestIdleAnimation()
     {
         SetAnimatorFloat("Speed", 0f);
         SetAnimatorBool("IsMoving", false);
+        Debug.Log("Forced Idle animation");
+    }
+
+    [ContextMenu("Test Walk Animation")]
+    public void TestWalkAnimation()
+    {
+        SetAnimatorFloat("Speed", 1f);
+        SetAnimatorBool("IsMoving", true);
+        SetAnimatorBool("IsRunning", false);
+        Debug.Log("Forced Walk animation");
     }
 
     [ContextMenu("Test Run Animation")]
     public void TestRunAnimation()
     {
-        SetAnimatorFloat("Speed", 1.5f);
+        SetAnimatorFloat("Speed", 2f);
         SetAnimatorBool("IsMoving", true);
         SetAnimatorBool("IsRunning", true);
+        Debug.Log("Forced Run animation");
     }
 
-    [ContextMenu("Test Jump Animation")]
-    public void TestJumpAnimation()
-    {
-        SetAnimatorTrigger("JumpTrigger");
-    }
-
-    [ContextMenu("Log Available Parameters")]
-    public void LogAvailableParameters()
+    [ContextMenu("Check Animator Parameters")]
+    public void CheckAnimatorParameters()
     {
         if (_animator == null) return;
 
-        Debug.Log("🎭 Available Animator Parameters:");
+        Debug.Log("🎭 Current Animator Parameters:");
         foreach (AnimatorControllerParameter param in _animator.parameters)
         {
             string currentValue = "";
@@ -358,37 +320,51 @@ public class PlayerAnimationController : MonoBehaviour
 
             Debug.Log($"  - {param.name} ({param.type}): {currentValue}");
         }
+
+        // Check transition conditions
+        Debug.Log("");
+        Debug.Log("🔍 Checking transition setup:");
+
+        bool hasSpeed = HasParameter("Speed", AnimatorControllerParameterType.Float);
+        bool hasIsMoving = HasParameter("IsMoving", AnimatorControllerParameterType.Bool);
+
+        Debug.Log($"Speed parameter: {(hasSpeed ? "✓" : "❌")}");
+        Debug.Log($"IsMoving parameter: {(hasIsMoving ? "✓" : "❌")}");
+
+        if (!hasSpeed)
+        {
+            Debug.LogError("❌ Missing 'Speed' parameter! Add it to your Animator Controller.");
+        }
+
+        if (!hasIsMoving)
+        {
+            Debug.LogWarning("⚠️ Missing 'IsMoving' parameter. Transitions might not work properly.");
+        }
     }
 
-    // Animation event receivers (call these from animation events)
-    public void OnJumpStart()
+    private void OnGUI()
     {
-        Debug.Log("Jump animation started");
-    }
+        if (!_debugAnimationValues) return;
 
-    public void OnJumpApex()
-    {
-        Debug.Log("Jump apex reached");
-    }
+        GUILayout.BeginArea(new Rect(10, 10, 280, 200));
+        GUILayout.Box("Animation Debug (Fixed)", GUILayout.Width(270));
 
-    public void OnJumpLanding()
-    {
-        Debug.Log("Jump landing");
-        SetAnimatorBool("IsGrounded", true);
-    }
+        GUILayout.Label($"Current State: {_currentStateName}");
+        GUILayout.Label($"Speed Parameter: {_currentSpeed:F2}");
+        GUILayout.Label($"Is Grounded: {_isGrounded}");
+        GUILayout.Label($"Is Running: {_isRunning}");
 
-    public void OnAttackStart()
-    {
-        Debug.Log("Attack animation started");
-    }
+        // Show input
+        Vector2 input = InputManager.Movement;
+        GUILayout.Label($"Input Magnitude: {input.magnitude:F2}");
+        GUILayout.Label($"Above Walk Threshold: {input.magnitude > _walkSpeedThreshold}");
 
-    public void OnAttackHit()
-    {
-        Debug.Log("Attack hit point");
-    }
+        if (_playerMovement != null)
+        {
+            GUILayout.Label($"H Velocity: {_playerMovement.HorizontalVelocity:F2}");
+            GUILayout.Label($"V Velocity: {_playerMovement.VerticalVelocity:F2}");
+        }
 
-    public void OnAttackEnd()
-    {
-        Debug.Log("Attack animation ended");
+        GUILayout.EndArea();
     }
 }

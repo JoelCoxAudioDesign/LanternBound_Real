@@ -5,7 +5,7 @@ using System.Collections;
 /// A simple light-activated switch/button
 /// Perfect for your puzzle mechanics
 /// </summary>
-public class LightActivatedSwitch : MonoBehaviour, ILightInteractable
+public class LightActivatedSwitch : MonoBehaviour
 {
     [Header("Switch Settings")]
     [SerializeField] private bool _requiresContinuousLight = true;
