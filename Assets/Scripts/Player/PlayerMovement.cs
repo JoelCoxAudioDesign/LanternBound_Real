@@ -157,15 +157,6 @@ public class PlayerMovement : MonoBehaviour
 
     #region Movement
 
-    private void CacheAnimator()
-    {
-        _animator = GetComponent<Animator>();
-        if (_animator == null)
-        {
-            Debug.LogWarning("No Animator component found on player.");
-        }
-    }
-
     private void Move(float acceleration, float decceleration, Vector2 moveInput)
     {
         if (!_isDashing)
@@ -219,31 +210,6 @@ public class PlayerMovement : MonoBehaviour
         {
             _isFacingRight = false;
             transform.Rotate(0f, -180f, 0f);
-        }
-    }
-
-    private void UpdateAnimatorFacingDirection(bool facingRight)
-    {
-        if (_animator == null) return;
-
-        // Set boolean parameter for facing direction
-        try
-        {
-            _animator.SetBool("FacingRight", facingRight);
-        }
-        catch
-        {
-            // Parameter doesn't exist, ignore
-        }
-
-        // Set float parameter for facing direction (-1.0 = left, 1.0 = right)
-        try
-        {
-            _animator.SetFloat("FacingDirection", facingRight ? 1f : -1f);
-        }
-        catch
-        {
-            // Parameter doesn't exist, ignore
         }
     }
 
