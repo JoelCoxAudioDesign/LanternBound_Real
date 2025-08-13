@@ -11,13 +11,13 @@ public interface ILightInteractable
     /// Called when this object enters the lantern's light beam
     /// </summary>
     /// <param name="lantern">The enhanced lantern controller illuminating this object</param>
-    void OnIlluminated(LanternController lantern);
+    void OnIlluminated(EnhancedLanternController lantern);
 
     /// <summary>
     /// Called when this object leaves the lantern's light beam
     /// </summary>
     /// <param name="lantern">The enhanced lantern controller that was illuminating this object</param>
-    void OnLeftLight(LanternController lantern);
+    void OnLeftLight(EnhancedLanternController lantern);
 
     /// <summary>
     /// Whether this object is currently being illuminated
@@ -29,7 +29,7 @@ public interface ILightInteractable
     /// </summary>
     /// <param name="lightType">The light type to check</param>
     /// <returns>True if this object responds to the given light type</returns>
-    bool RespondsToLightType(LanternController.LightType lightType);
+    bool RespondsToLightType(EnhancedLanternController.LightType lightType);
 }
 
 /// <summary>
@@ -42,8 +42,8 @@ public class EnhancedRevealablePlatform : MonoBehaviour, ILightInteractable
 {
     [Header("Light Type Requirements")]
     [SerializeField]
-    private LanternController.LightType[] _requiredLightTypes =
-        { LanternController.LightType.Ember, LanternController.LightType.Radiance };
+    private EnhancedLanternController.LightType[] _requiredLightTypes =
+        { EnhancedLanternController.LightType.Ember, EnhancedLanternController.LightType.Radiance };
     [SerializeField] private bool _requiresSpecificLightType = false;
 
     [Header("Reveal Settings")]
@@ -88,7 +88,7 @@ public class EnhancedRevealablePlatform : MonoBehaviour, ILightInteractable
         }
     }
 
-    public void OnIlluminated(LanternController lantern)
+    public void OnIlluminated(EnhancedLanternController lantern)
     {
         if (IsIlluminated || _permanentlyRevealed) return;
 
@@ -106,7 +106,7 @@ public class EnhancedRevealablePlatform : MonoBehaviour, ILightInteractable
         }
     }
 
-    public void OnLeftLight(LanternController lantern)
+    public void OnLeftLight(EnhancedLanternController lantern)
     {
         if (!IsIlluminated || _permanentlyRevealed) return;
 
@@ -118,7 +118,7 @@ public class EnhancedRevealablePlatform : MonoBehaviour, ILightInteractable
         }
     }
 
-    public bool RespondsToLightType(LanternController.LightType lightType)
+    public bool RespondsToLightType(EnhancedLanternController.LightType lightType)
     {
         if (!_requiresSpecificLightType) return true;
 
@@ -271,7 +271,7 @@ public class EnhancedLightSensitiveEnemy : MonoBehaviour, ILightInteractable
     [System.Serializable]
     public class LightReactionData
     {
-        public LanternController.LightType lightType;
+        public EnhancedLanternController.LightType lightType;
         public EnemyReaction reaction = EnemyReaction.Retreat;
         public float reactionSpeed = 5f;
         public float damage = 0f;
@@ -298,7 +298,7 @@ public class EnhancedLightSensitiveEnemy : MonoBehaviour, ILightInteractable
     private bool _isStunned = false;
     private bool _isReacting = false;
     private Coroutine _reactionCoroutine;
-    private LanternController.LightType _currentAffectingLightType;
+    private EnhancedLanternController.LightType _currentAffectingLightType;
 
     private void Awake()
     {
@@ -317,7 +317,7 @@ public class EnhancedLightSensitiveEnemy : MonoBehaviour, ILightInteractable
         }
     }
 
-    public void OnIlluminated(LanternController lantern)
+    public void OnIlluminated(EnhancedLanternController lantern)
     {
         if (IsIlluminated) return;
 
@@ -333,7 +333,7 @@ public class EnhancedLightSensitiveEnemy : MonoBehaviour, ILightInteractable
         StartReaction(reaction);
     }
 
-    public void OnLeftLight(LanternController lantern)
+    public void OnLeftLight(EnhancedLanternController lantern)
     {
         if (!IsIlluminated) return;
 
@@ -341,13 +341,13 @@ public class EnhancedLightSensitiveEnemy : MonoBehaviour, ILightInteractable
         StopReaction();
     }
 
-    public bool RespondsToLightType(LanternController.LightType lightType)
+    public bool RespondsToLightType(EnhancedLanternController.LightType lightType)
     {
         // This enemy responds to all light types, but with different reactions
         return true;
     }
 
-    private LightReactionData GetReactionForLightType(LanternController.LightType lightType)
+    private LightReactionData GetReactionForLightType(EnhancedLanternController.LightType lightType)
     {
         foreach (var reaction in _lightReactions)
         {
@@ -545,7 +545,7 @@ public class EnhancedLightSensitiveEnemy : MonoBehaviour, ILightInteractable
 public class EnhancedLanternShrine : MonoBehaviour, ILightInteractable
 {
     [Header("Light Type Requirements")]
-    [SerializeField] private LanternController.LightType _requiredLightType = LanternController.LightType.Radiance;
+    [SerializeField] private EnhancedLanternController.LightType _requiredLightType = EnhancedLanternController.LightType.Radiance;
     [SerializeField] private bool _acceptsAnyLightType = false;
 
     [Header("Activation Settings")]
@@ -564,7 +564,7 @@ public class EnhancedLanternShrine : MonoBehaviour, ILightInteractable
 
     [Header("Rewards")]
     [SerializeField] private GameObject _rewardPrefab;
-    [SerializeField] private LanternController.LightType _grantedLightType = LanternController.LightType.None;
+    [SerializeField] private EnhancedLanternController.LightType _grantedLightType = EnhancedLanternController.LightType.None;
 
     public bool IsIlluminated { get; private set; }
     public bool IsActivated { get; private set; }
@@ -595,7 +595,7 @@ public class EnhancedLanternShrine : MonoBehaviour, ILightInteractable
             _activationParticles.Stop();
     }
 
-    public void OnIlluminated(LanternController lantern)
+    public void OnIlluminated(EnhancedLanternController lantern)
     {
         if (IsIlluminated || (_staysLitOnceActivated && IsActivated)) return;
 
@@ -614,7 +614,7 @@ public class EnhancedLanternShrine : MonoBehaviour, ILightInteractable
         }
     }
 
-    public void OnLeftLight(LanternController lantern)
+    public void OnLeftLight(EnhancedLanternController lantern)
     {
         if (!IsIlluminated || (_staysLitOnceActivated && IsActivated)) return;
 
@@ -636,7 +636,7 @@ public class EnhancedLanternShrine : MonoBehaviour, ILightInteractable
         }
     }
 
-    public bool RespondsToLightType(LanternController.LightType lightType)
+    public bool RespondsToLightType(EnhancedLanternController.LightType lightType)
     {
         return _acceptsAnyLightType || lightType == _requiredLightType;
     }
@@ -705,9 +705,9 @@ public class EnhancedLanternShrine : MonoBehaviour, ILightInteractable
         }
 
         // Grant new light type
-        if (_grantedLightType != LanternController.LightType.None)
+        if (_grantedLightType != EnhancedLanternController.LightType.None)
         {
-            var player = FindFirstObjectByType<LanternController>();
+            var player = FindFirstObjectByType<EnhancedLanternController>();
             if (player != null)
             {
                 player.DiscoverLightType(_grantedLightType);
